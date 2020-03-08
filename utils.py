@@ -6,8 +6,10 @@ import numpy as np
 import streamlit as st
 import tensorflow as tf
 import grpc
-from tensorflow_serving.apis import predict_pb2
-from tensorflow_serving.apis import prediction_service_pb2_grpc
+from tensorflow_serving.apis import (
+    prediction_service_pb2_grpc,
+    predict_pb2
+)
 
 from consts import (
     TRAIN_FD,
@@ -39,59 +41,76 @@ def wfile(root):
     return sorted(img_fps)
 
 
-def norm_mean_std(img):
+class FlowerArc:
 
-    img = img / 255
-    img = img.astype('float32')
+    def __init__(self,
+                 host="192.168.19.96",
+                 port=8700,
+                 model_name="flower",
+                 model_signature="flower_signature",
+                 input_name="input_image",
+                 output_name="emb_pred"):
 
-    mean = np.mean(img, axis=(0, 1, 2))
-    std = np.std(img, axis=(0, 1, 2))
-    img = (img - mean) / std
+        self.host = host
+        self.port = port
 
-    return img
-
-
-def test_preprocess(img, img_size=(384, 384), expand=True):
-
-    img = cv2.resize(img, img_size)
-
-    # normalize image
-    img = norm_mean_std(img)
-
-    if expand:
-        img = np.expand_dims(img, axis=0)
-
-    return img
-
-
-def grpc_infer(img,
-               host="192.168.19.96",
-               port=8700,
-               model_name="flower",
-               model_signature="flower_signature",
-               input_name="input_image",
-               output_name="emb_pred"):
-
-    assert img.ndim == 3
-
-    channel = grpc.insecure_channel("{}:{}".format(host, port))
-    stub = prediction_service_pb2_grpc.PredictionServiceStub(channel)
-
-    request = predict_pb2.PredictRequest()
-    request.model_spec.name = model_name
-    request.model_spec.signature_name = model_signature
-
-    test_img = test_preprocess(img)
-
-    request.inputs[input_name].CopyFrom(
-        tf.contrib.util.make_tensor_proto(
-            test_img,
-            dtype=tf.float32,
-            shape=test_img.shape
+        self.channel = grpc.insecure_channel("{}:{}".format(
+            self.host, self.port
+        ))
+        self.stub = prediction_service_pb2_grpc.PredictionServiceStub(
+            self.channel
         )
-    )
+        self.input_name = input_name
+        self.output_name = output_name
 
-    result = stub.Predict(request, 10.0)
+        self.request = predict_pb2.PredictRequest()
+        self.request.model_spec.name = model_name
+        self.request.model_spec.signature_name = model_signature
 
-    emb_pred = tf.contrib.util.make_ndarray(result.outputs[output_name])
-    return emb_pred
+    def norm_mean_std(self,
+                      img):
+
+        img = img / 255
+        img = img.astype('float32')
+
+        mean = np.mean(img, axis=(0, 1, 2))
+        std = np.std(img, axis=(0, 1, 2))
+        img = (img - mean) / std
+
+        return img
+
+    def test_preprocess(self,
+                        img,
+                        img_size=(384, 384),
+                        expand=True):
+
+        img = cv2.resize(img, img_size)
+
+        # normalize image
+        img = self.norm_mean_std(img)
+
+        if expand:
+            img = np.expand_dims(img, axis=0)
+
+        return img
+
+    def predict(self, img):
+
+        assert img.ndim == 3
+
+        img = self.test_preprocess(img)
+
+        self.request.inputs[self.input_name].CopyFrom(
+            tf.contrib.util.make_tensor_proto(
+                img,
+                dtype=tf.float32,
+                shape=img.shape
+            )
+        )
+
+        result = self.stub.Predict(self.request, 10.0)
+
+        emb_pred = tf.contrib.util.make_ndarray(
+            result.outputs[self.output_name]
+        )
+        return emb_pred

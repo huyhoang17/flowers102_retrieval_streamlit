@@ -4,10 +4,13 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from PIL import Image
 import streamlit as st
-from utils import grpc_infer, load_prec_embs
+
+from utils import FlowerArc, load_prec_embs
 
 
-def main():
+def main(top_k):
+
+    flower_arc = FlowerArc()
 
     st.title("Flower retrieval")
     train_img_fps, train_embs, train_labels = load_prec_embs()
@@ -23,10 +26,9 @@ def main():
         img_arr = np.array(image)
 
         # query emb
-        test_emb = grpc_infer(img_arr)
+        test_emb = flower_arc.predict(img_arr)
 
         dists = cdist(test_emb, train_embs, metric='euclidean')[0]
-        top_k = 18
         min_dist_indexes = dists.argsort()[:top_k]
         label_indexes = [train_labels[index] + 1 for index in min_dist_indexes]
         img_fps = [train_img_fps[index] for index in min_dist_indexes]
@@ -37,4 +39,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(top_k=18)
