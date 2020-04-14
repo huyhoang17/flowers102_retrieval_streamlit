@@ -44,8 +44,8 @@ def wfile(root):
 class FlowerArc:
 
     def __init__(self,
-                 host="192.168.19.96",
-                 port=8700,
+                 host="localhost",
+                 port=8500,
                  model_name="flower",
                  model_signature="flower_signature",
                  input_name="input_image",
@@ -114,3 +114,63 @@ class FlowerArc:
             result.outputs[self.output_name]
         )
         return emb_pred
+
+
+class Saliency:
+
+    def __init__(self,
+                 host="localhost",
+                 port=8500,
+                 model_name="saliency",
+                 model_signature="serving_default",
+                 input_name="input_image",
+                 output_name="pred_mask"):
+
+        self.host = host
+        self.port = port
+
+        self.channel = grpc.insecure_channel("{}:{}".format(
+            self.host, self.port
+        ))
+        self.stub = prediction_service_pb2_grpc.PredictionServiceStub(
+            self.channel
+        )
+        self.input_name = input_name
+        self.output_name = output_name
+
+        self.request = predict_pb2.PredictRequest()
+        self.request.model_spec.name = model_name
+        self.request.model_spec.signature_name = model_signature
+
+    def test_preprocess(self,
+                        img,
+                        img_size=(320, 240),
+                        expand=True):
+
+        img = cv2.resize(img, img_size)
+
+        if expand:
+            img = np.expand_dims(img, axis=0)
+
+        return img
+
+    def predict(self, img):
+
+        assert img.ndim == 3
+
+        img = self.test_preprocess(img)
+
+        self.request.inputs[self.input_name].CopyFrom(
+            tf.contrib.util.make_tensor_proto(
+                img,
+                dtype=tf.float32,
+                shape=img.shape
+            )
+        )
+
+        result = self.stub.Predict(self.request, 10.0)
+
+        pred_mask = tf.contrib.util.make_ndarray(
+            result.outputs[self.output_name]
+        )
+        return pred_mask
