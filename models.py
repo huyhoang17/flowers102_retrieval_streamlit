@@ -136,6 +136,19 @@ def _decoder(aspp_layer):
     return deco_out
 
 
+def _normalize(maps, eps=1e-7):
+
+    min_per_image = tf.reduce_min(
+        maps, axis=(1, 2, 3), keep_dims=True)
+    maps -= min_per_image
+
+    max_per_image = tf.reduce_max(
+        maps, axis=(1, 2, 3), keep_dims=True)
+    maps = tf.divide(maps, eps + max_per_image)
+
+    return maps
+
+
 def saliency_net(img_size=(240, 320, 3)):
     input_layer = layers.Input(
         name='input_image', shape=img_size, dtype='float32')
@@ -143,8 +156,9 @@ def saliency_net(img_size=(240, 320, 3)):
     layer_19 = _encoder(input_layer)
     aspp_layer = _aspp(layer_19)
     deco_out = _decoder(aspp_layer)
+    output_layer = _normalize(deco_out)
 
-    net = models.Model(inputs=[input_layer], outputs=deco_out)
+    net = models.Model(inputs=[input_layer], outputs=output_layer)
     return net
 
 
